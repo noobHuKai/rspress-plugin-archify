@@ -58,6 +58,9 @@ export interface DiagramResult {
   title: string;
 }
 
+// 键须含目标名:同一规格可能被不同 name 引用(demo 与正式文档各一份),
+// 产物(html/embed 片段/viewer 链接)按 name 区分,不能共享缓存
+const cacheKey = (srcAbs: string, name: string) => `${srcAbs}\u0000${name}`;
 const cache = new Map<string, { hash: string; result: DiagramResult }>();
 
 function warn(message: string): void {
@@ -239,14 +242,15 @@ export function renderDiagram(
   target: DiagramTarget,
   rt: ArchifyRuntime,
 ): Promise<DiagramResult> {
-  const pending = inflight.get(target.srcAbs);
+  const key = cacheKey(target.srcAbs, target.name);
+  const pending = inflight.get(key);
   if (pending) {
     return pending;
   }
   const run = renderDiagramOnce(target, rt).finally(() => {
-    inflight.delete(target.srcAbs);
+    inflight.delete(key);
   });
-  inflight.set(target.srcAbs, run);
+  inflight.set(key, run);
   return run;
 }
 
@@ -259,7 +263,7 @@ async function renderDiagramOnce(
     .update(spec)
     .update(`\nlocale:${rt.locale ?? ''}`)
     .digest('hex');
-  const hit = cache.get(target.srcAbs);
+  const hit = cache.get(cacheKey(target.srcAbs, target.name));
   if (hit && hit.hash === hash) {
     return hit.result;
   }
@@ -334,7 +338,7 @@ ${receiptSummary(deliver.stdout || deliver.stderr)}`,
   });
 
   const result = buildResult();
-  cache.set(target.srcAbs, { hash, result });
+  cache.set(cacheKey(target.srcAbs, target.name), { hash, result });
   return result;
 }
 
