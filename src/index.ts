@@ -16,6 +16,9 @@ import type { ArchifyRemarkContext } from './remark';
 import { remarkArchify } from './remark';
 import { syncDiagramsToOutDir } from './render';
 
+// 独立导出提取工具,便于使用方做提取回归/自定义消费
+export { extractEmbed, extractEmbedMeta } from './extract';
+
 export interface ArchifyPluginOptions {
   /** archify CLI 入口(默认 ~/.agents/skills/archify/bin/archify.mjs) */
   archifyBin?: string;
