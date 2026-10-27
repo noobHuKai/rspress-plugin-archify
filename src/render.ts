@@ -118,25 +118,30 @@ function receiptSummary(stdout: string): string {
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
- * 跨进程输出锁:rspress 的 node/web 编译器会并行编译 md,同一张图的
- * validate+deliver 可能同时进行;archify 3.2 的 deliver 自带输出锁,
- * 并发第二轮会以 delivery/concurrent-attempt 失败。用 mkdir 的原子性
- * 自建锁把同一输出的整段 CLI 调用串行化。持锁进程崩溃会留下锁目录,
- * 等待超过时限后强制接管。
+ * 跨进程目录锁:archify 3.2 的 deliver 用目录级单锁
+ * (<diagrams>/.archify-delivery-lock.json)互斥,任何两张图并行交付都会
+ * 以 delivery/concurrent-attempt 失败——rspress 的 node/web 编译器并行
+ * 编译 md 时必然发生。用 mkdir 的原子性把同一输出目录的整段 CLI 调用
+ * 串行化(粒度=目录,与 archify 锁模型一致)。持锁进程崩溃会留下锁目录,
+ * 等待超时后强制接管(交付确定性输出,重跑安全)。
  */
-async function withOutputLock<T>(
-  htmlPath: string,
+async function withDiagramsLock<T>(
+  publicDiagramsDir: string,
   fn: () => Promise<T>,
 ): Promise<T> {
-  const lockDir = `${htmlPath}.archify-lock`;
-  const deadline = Date.now() + 120_000;
+  const key = createHash('sha1')
+    .update(publicDiagramsDir)
+    .digest('hex')
+    .slice(0, 12);
+  const lockDir = path.join(os.tmpdir(), `rspress-plugin-archify-lock-${key}`);
+  const deadline = Date.now() + 180_000;
   for (;;) {
     try {
       mkdirSync(lockDir);
       break;
     } catch {
       if (Date.now() > deadline) {
-        // 疑似残留锁:接管(构建产物是确定性输出,重跑安全)
+        // 疑似残留锁:接管
         rmSync(lockDir, { recursive: true, force: true });
         continue;
       }
@@ -295,7 +300,7 @@ async function renderDiagramOnce(
   mkdirSync(rt.publicDiagramsDir, { recursive: true });
 
   const cliSpec = effectiveSpecPath(target, rt, spec);
-  await withOutputLock(htmlPath, async () => {
+  await withDiagramsLock(rt.publicDiagramsDir, async () => {
     const validate = await runNodeRetry(rt.archifyBin, [
       'validate',
       target.type,
