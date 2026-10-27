@@ -14,6 +14,7 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  rmSync,
   statSync,
   writeFileSync,
 } from 'node:fs';
@@ -94,15 +95,64 @@ function runNode(
   });
 }
 
-/** 展示 CLI 失败输出的关键行(完整 receipt 可能很长,截断到可读范围)。 */
+/** 展示 CLI 失败输出的关键信息(receipt 是 JSON 时取 error/诊断,否则截前 12 行)。 */
 function receiptSummary(stdout: string): string {
+  try {
+    const receipt = JSON.parse(stdout) as {
+      error?: string;
+      diagnostics?: Array<{ message?: string }>;
+    };
+    const parts = [
+      receipt.error,
+      ...(receipt.diagnostics ?? []).map((d) => d.message),
+    ].filter((s): s is string => Boolean(s));
+    if (parts.length > 0) {
+      return parts.slice(0, 4).join('\n');
+    }
+  } catch {
+    // 非 JSON 输出,走截断兜底
+  }
   return stdout.split('\n').slice(0, 12).join('\n');
 }
 
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 /**
- * 带单次重试的 CLI 调用:交付是确定性的,跨进程并发冲突(如两个编译器
- * 同时写同目录快照导致的 prepare 失败)重试即可恢复;真实失败重试后
- * 依旧失败,按原样上报。
+ * 跨进程输出锁:rspress 的 node/web 编译器会并行编译 md,同一张图的
+ * validate+deliver 可能同时进行;archify 3.2 的 deliver 自带输出锁,
+ * 并发第二轮会以 delivery/concurrent-attempt 失败。用 mkdir 的原子性
+ * 自建锁把同一输出的整段 CLI 调用串行化。持锁进程崩溃会留下锁目录,
+ * 等待超过时限后强制接管。
+ */
+async function withOutputLock<T>(
+  htmlPath: string,
+  fn: () => Promise<T>,
+): Promise<T> {
+  const lockDir = `${htmlPath}.archify-lock`;
+  const deadline = Date.now() + 120_000;
+  for (;;) {
+    try {
+      mkdirSync(lockDir);
+      break;
+    } catch {
+      if (Date.now() > deadline) {
+        // 疑似残留锁:接管(构建产物是确定性输出,重跑安全)
+        rmSync(lockDir, { recursive: true, force: true });
+        continue;
+      }
+      await sleep(200);
+    }
+  }
+  try {
+    return await fn();
+  } finally {
+    rmSync(lockDir, { recursive: true, force: true });
+  }
+}
+
+/**
+ * 带单次重试的 CLI 调用:交付是确定性的,残余的并发冲突重试即可恢复;
+ * 真实失败重试后依旧失败,按原样上报。
  */
 async function runNodeRetry(
   bin: string,
@@ -110,7 +160,7 @@ async function runNodeRetry(
 ): Promise<{ code: number; stdout: string; stderr: string }> {
   let result = await runNode(bin, args);
   if (result.code !== 0) {
-    await new Promise((resolve) => setTimeout(resolve, 300));
+    await sleep(300);
     result = await runNode(bin, args);
   }
   return result;
@@ -245,36 +295,38 @@ async function renderDiagramOnce(
   mkdirSync(rt.publicDiagramsDir, { recursive: true });
 
   const cliSpec = effectiveSpecPath(target, rt, spec);
-  const validate = await runNodeRetry(rt.archifyBin, [
-    'validate',
-    target.type,
-    cliSpec,
-    '--quality',
-    'showcase',
-    '--json',
-  ]);
-  if (validate.code !== 0) {
-    return staleOrThrow(
-      `archify validate 失败(exit ${validate.code},${target.srcAbs}):
+  await withOutputLock(htmlPath, async () => {
+    const validate = await runNodeRetry(rt.archifyBin, [
+      'validate',
+      target.type,
+      cliSpec,
+      '--quality',
+      'showcase',
+      '--json',
+    ]);
+    if (validate.code !== 0) {
+      throw new Error(
+        `archify validate 失败(exit ${validate.code},${target.srcAbs}):
 ${receiptSummary(validate.stdout || validate.stderr)}`,
-    );
-  }
+      );
+    }
 
-  const deliver = await runNodeRetry(rt.archifyBin, [
-    'deliver',
-    target.type,
-    cliSpec,
-    htmlPath,
-    '--quality',
-    'showcase',
-    '--json',
-  ]);
-  if (deliver.code !== 0) {
-    return staleOrThrow(
-      `archify deliver 失败(exit ${deliver.code},${target.srcAbs} → ${htmlPath}):
+    const deliver = await runNodeRetry(rt.archifyBin, [
+      'deliver',
+      target.type,
+      cliSpec,
+      htmlPath,
+      '--quality',
+      'showcase',
+      '--json',
+    ]);
+    if (deliver.code !== 0) {
+      throw new Error(
+        `archify deliver 失败(exit ${deliver.code},${target.srcAbs} → ${htmlPath}):
 ${receiptSummary(deliver.stdout || deliver.stderr)}`,
-    );
-  }
+      );
+    }
+  });
 
   const result = buildResult();
   cache.set(target.srcAbs, { hash, result });
