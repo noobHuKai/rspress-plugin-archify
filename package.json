@@ -1,0 +1,37 @@
+{
+  "name": "rspress-plugin-archify",
+  "version": "0.1.0",
+  "description": "Rspress plugin for archify diagrams: build-time validate → deliver → lazy-embed interactive architecture/workflow/sequence/dataflow/lifecycle charts",
+  "type": "commonjs",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node scripts/copy-assets.js",
+    "prepublishOnly": "pnpm run build",
+    "check": "tsc -p tsconfig.json --noEmit"
+  },
+  "keywords": [
+    "rspress",
+    "rspress-plugin",
+    "archify",
+    "diagram",
+    "documentation"
+  ],
+  "license": "MIT",
+  "peerDependencies": {
+    "@rspress/core": "^2.0.0",
+    "react": ">=18"
+  },
+  "devDependencies": {
+    "@rspress/core": "^2.0.22",
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.2.18",
+    "react": "^19.2.8",
+    "typescript": "^5.9.3"
+  }
+}
