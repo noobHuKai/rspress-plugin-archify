@@ -17,6 +17,7 @@ import {
   statSync,
   writeFileSync,
 } from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import { extractEmbed, extractEmbedMeta } from './extract';
 import { wrapEmbed } from './wrapper';
@@ -147,7 +148,9 @@ function injectNorailGuard(htmlPath: string): void {
 
 /**
  * 计算实际交给 CLI 的规格路径:配置了 locale 且与规格当前值不同时,
- * 写临时副本(node_modules/.cache 下,不进产物与 git)注入 meta.locale。
+ * 写临时副本注入 meta.locale。临时目录用 os.tmpdir()——不能放
+ * node_modules/.cache,rsbuild 构建初期会清整该目录,导致并发中的
+ * deliver 在 prepare 阶段读不到输入。
  */
 function effectiveSpecPath(
   target: DiagramTarget,
@@ -162,7 +165,7 @@ function effectiveSpecPath(
     return target.srcAbs;
   }
   spec.meta = { ...spec.meta, locale: rt.locale };
-  const tmpDir = path.join(process.cwd(), 'node_modules', '.cache', 'archify');
+  const tmpDir = path.join(os.tmpdir(), 'rspress-plugin-archify');
   mkdirSync(tmpDir, { recursive: true });
   const tmpPath = path.join(tmpDir, `${target.name}.${target.type}.json`);
   writeFileSync(tmpPath, JSON.stringify(spec, null, 2));
