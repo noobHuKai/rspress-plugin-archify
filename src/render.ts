@@ -99,6 +99,23 @@ function receiptSummary(stdout: string): string {
 }
 
 /**
+ * 带单次重试的 CLI 调用:交付是确定性的,跨进程并发冲突(如两个编译器
+ * 同时写同目录快照导致的 prepare 失败)重试即可恢复;真实失败重试后
+ * 依旧失败,按原样上报。
+ */
+async function runNodeRetry(
+  bin: string,
+  args: string[],
+): Promise<{ code: number; stdout: string; stderr: string }> {
+  let result = await runNode(bin, args);
+  if (result.code !== 0) {
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    result = await runNode(bin, args);
+  }
+  return result;
+}
+
+/**
  * 站点定制:交付产物注入"演示模式(present=1)下隐藏 reader-rail /
  * Node index"的样式。直接打开交互图保持原版(Node index 可见);全屏
  * 演示覆盖层以 present=1 打开,不展示索引栏——与 viewer 在演示模式下
@@ -152,7 +169,30 @@ function effectiveSpecPath(
   return tmpPath;
 }
 
-export async function renderDiagram(
+/**
+ * 并发防护:node/web 两个编译器会并行编译 md,同一张图可能同时触发
+ * validate/deliver——archify 原子交付的同目录快照会相互冲突(prepare 阶段
+ * 失败)。进行中 Promise 复用消除本进程并发;交付是确定性的,跨进程冲突
+ * 由 runNodeRetry 的单次重试兜底。
+ */
+const inflight = new Map<string, Promise<DiagramResult>>();
+
+export function renderDiagram(
+  target: DiagramTarget,
+  rt: ArchifyRuntime,
+): Promise<DiagramResult> {
+  const pending = inflight.get(target.srcAbs);
+  if (pending) {
+    return pending;
+  }
+  const run = renderDiagramOnce(target, rt).finally(() => {
+    inflight.delete(target.srcAbs);
+  });
+  inflight.set(target.srcAbs, run);
+  return run;
+}
+
+async function renderDiagramOnce(
   target: DiagramTarget,
   rt: ArchifyRuntime,
 ): Promise<DiagramResult> {
@@ -202,7 +242,7 @@ export async function renderDiagram(
   mkdirSync(rt.publicDiagramsDir, { recursive: true });
 
   const cliSpec = effectiveSpecPath(target, rt, spec);
-  const validate = await runNode(rt.archifyBin, [
+  const validate = await runNodeRetry(rt.archifyBin, [
     'validate',
     target.type,
     cliSpec,
@@ -217,7 +257,7 @@ ${receiptSummary(validate.stdout || validate.stderr)}`,
     );
   }
 
-  const deliver = await runNode(rt.archifyBin, [
+  const deliver = await runNodeRetry(rt.archifyBin, [
     'deliver',
     target.type,
     cliSpec,
