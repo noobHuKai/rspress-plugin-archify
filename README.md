@@ -1,106 +1,119 @@
 # rspress-plugin-archify
 
-[Rspress](https://rspress.rs) 插件:把 [archify](https://github.com/tt-a1i/archify) 图表集成进文档站——构建期自动 **validate → deliver → 懒加载内嵌**,并为每张图提供静态全屏与演示模式入口。
+[![npm version](https://img.shields.io/npm/v/rspress-plugin-archify)](https://www.npmjs.com/package/rspress-plugin-archify)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 
-## 特性
+**English** | [简体中文](./README.zh-CN.md)
 
-- **`:::archify` 容器语法**:markdown 中一行引用 archify JSON 源规格,构建期自动校验(showcase)、交付交互版 HTML、提取内嵌 SVG;
-- **懒加载内嵌**:页面只注入轻量占位符(标题 + 宽高比预留 + 无 JS 回退链接),图表滚入视口时才 fetch 片段注入——整棵 SVG 不进 React 树与页面 JS chunk,首屏更轻;
-- **悬浮工具组**:悬停图表右上角浮现 ▶ 演示 / ⛶ 全屏 / ↗ 交互版 三个入口;
-- **演示模式**:▶ 按钮以覆盖层打开交互查看器的 presentation 模式(`?present=1`,含信号流动效与章节引导),主题、语言与直接打开完全一致;
-- **交互版自动交付**:完整查看器 HTML 每次构建自动刷新到 `<docs>/public/diagrams/`,并修复 rspress public 目录复制早于 md 编译的时序竞态(afterBuild 全量同步);
-- **深浅色跟随**:内嵌 SVG 使用 CSS 变量,自动跟随站点 `html.dark` 外观切换;
-- **界面语言可配置**:查看器 UI 默认英文,通过 `locale: 'zh-CN'` 选项交付中文界面(经临时规格副本注入 `meta.locale`,源规格不变)。
+An [Rspress](https://rspress.rs) plugin that integrates [archify](https://github.com/tt-a1i/archify) diagrams into your documentation site. At build time, each diagram is validated and delivered automatically; on the page, a lightweight placeholder lazy-loads a static SVG embed, with one-click fullscreen and presentation-mode entry points for the interactive viewer.
 
-## 前置要求
+## Features
 
-本插件在构建期调用 [archify CLI](https://github.com/tt-a1i/archify)(零依赖 Node 脚本)渲染图表。CLI 定位顺序:
+- **`:::archify` container syntax** — reference an archify JSON spec in one line of Markdown. The plugin validates it at build time (`showcase` quality), delivers the interactive viewer HTML, and extracts a static SVG for in-page embedding.
+- **Lazy-loaded embeds** — pages only get a tiny placeholder (title + aspect-ratio reservation + no-JS fallback link). The SVG fragment is fetched and injected when the diagram scrolls into view, so the full SVG tree never enters the React tree or the page's JS chunk.
+- **Hover toolbar** — hovering a diagram reveals three actions in the top-right corner: ▶ present, ⛶ fullscreen, and ↗ open interactive version.
+- **Presentation mode** — the ▶ button opens the interactive viewer's presentation mode (`?present=1`, with signal-flow animation and section-by-section guidance) in an overlay, using the same theme and language as the standalone viewer.
+- **Automatic delivery** — the full viewer HTML is refreshed into `<docs>/public/diagrams/` on every build. An `afterBuild` sync step also fixes a race where Rspress copies the `public/` directory before Markdown compilation finishes.
+- **Dark mode aware** — embedded SVGs use CSS variables and follow your site's `html.dark` appearance toggle.
+- **Configurable UI language** — the viewer UI defaults to English; pass `locale: 'zh-CN'` to deliver a Chinese interface (implemented via a temporary spec copy with `meta.locale` injected — your source specs are never modified).
 
-1. 插件选项 `archifyBin`
-2. 环境变量 `ARCHIFY_BIN`
-3. `~/.agents/skills/archify/bin/archify.mjs`(通过 `npx skills add tt-a1i/archify -g` 安装)
+## Prerequisites
 
-## 安装
+The plugin invokes the [archify CLI](https://github.com/tt-a1i/archify) (a zero-dependency Node script) at build time to render diagrams. It is located in this order:
+
+1. The `archifyBin` plugin option
+2. The `ARCHIFY_BIN` environment variable
+3. `~/.agents/skills/archify/bin/archify.mjs` (installed via `npx skills add tt-a1i/archify -g`)
+
+## Installation
 
 ```bash
 npm install rspress-plugin-archify
 ```
 
-## 快速开始
+## Quick start
 
-在 `rspress.config.ts` 注册:
+Register the plugin in `rspress.config.ts`:
 
 ```ts
 import { defineConfig } from 'rspress';
 import { pluginArchify } from 'rspress-plugin-archify';
 
 export default defineConfig({
-  plugins: [pluginArchify({ locale: 'zh-CN' })],
+  plugins: [pluginArchify()],
 });
 ```
 
-在 markdown 中引用图表(规格路径相对项目根):
+Reference a diagram in Markdown (the spec path is relative to the project root):
 
 ```md
 :::archify src=diagrams/deploy.workflow.json
 :::
 ```
 
-| 参数 | 必填 | 说明 |
+| Prop | Required | Description |
 | --- | --- | --- |
-| `src` | 是 | archify JSON 源规格路径 |
-| `type` | 否 | 图类型,默认从文件名 `<名称>.<类型>.json` 推断(architecture / workflow / sequence / dataflow / lifecycle) |
-| `name` | 否 | 交互版 HTML 基名,默认取文件名中的名称段 |
+| `src` | Yes | Path to an archify JSON spec |
+| `type` | No | Diagram type; inferred from the `<name>.<type>.json` filename by default (architecture / workflow / sequence / dataflow / lifecycle) |
+| `name` | No | Base name for the interactive HTML file; defaults to the name segment of the filename |
 
-## 插件选项
+## Plugin options
 
 ```ts
 interface ArchifyPluginOptions {
-  /** archify CLI 入口(默认 ~/.agents/skills/archify/bin/archify.mjs) */
+  /** Entry point of the archify CLI (default: ~/.agents/skills/archify/bin/archify.mjs) */
   archifyBin?: string;
-  /** 交互版 HTML 输出目录(默认 <docs root>/public/diagrams) */
+  /** Output directory for interactive HTML (default: <docs root>/public/diagrams) */
   publicDiagramsDir?: string;
-  /** 查看器界面语言(如 'zh-CN');未设置交付规格原样(默认英文) */
+  /** Viewer UI language (e.g. 'zh-CN'); unset = deliver the spec as-is (English by default) */
   locale?: string;
-  /** 严格模式:渲染失败直接终止构建。默认生产构建严格、dev 回退旧产物并警告 */
+  /** Strict mode: any rendering failure aborts the build. Defaults to strict in production builds; dev falls back to previously delivered artifacts with a warning */
   strict?: boolean;
 }
 ```
 
-## 工作原理
+## How it works
 
 ```
-:::archify 容器
-   │ 构建期(remark 插件)
-   ├─ archify validate <type> <spec> --quality showcase   # 非零退出不算成功
+:::archify container
+   │ Build time (remark plugin)
+   ├─ archify validate <type> <spec> --quality showcase   # non-zero exit = failure
    ├─ archify deliver  <type> <spec> <public/diagrams>/<name>.html
-   ├─ 提取内嵌 SVG + 作用域化样式 → <name>.embed.html 片段
-   └─ 注入轻量占位符(.archify-lazy)
-        │ 运行时(全局桥接组件)
-        ├─ 滚入视口 → fetch 片段 → outerHTML 注入
-        ├─ 悬停工具组:▶ 演示(present 覆盖层)/ ⛶ 全屏 / ↗ 交互版
-        └─ scroll/resize + 轮询兜底(兼容 IM 内嵌 webview)
+   ├─ Extract embedded SVG + scoped styles → <name>.embed.html fragment
+   └─ Inject a lightweight placeholder (.archify-lazy)
+        │ Runtime (global bridge component)
+        ├─ Scroll into view → fetch fragment → inject via outerHTML
+        ├─ Hover toolbar: ▶ present (overlay) / ⛶ fullscreen / ↗ interactive
+        └─ scroll/resize listeners + polling fallback
 ```
 
-展示分层:静态内嵌为纯 SVG(不含查看器的总结卡与 Node index);完整内容(卡片、节点索引、搜索、路由探查、导出等)在交互版;演示模式为 present=1 的查看器(不含 Node index)。
+The same diagram referenced by multiple pages is rendered only once per build (in-memory cache keyed on spec content).
 
-## 已知行为
+Three presentation layers are available: the static embed is pure SVG (no summary card or node index); the interactive version contains the full viewer (summary cards, node index, search, route exploration, export); presentation mode is the viewer with `?present=1` (node index hidden).
 
-- 修改 JSON 源后,dev 模式需 touch 对应 md 触发重编译(生产构建不受影响);
-- llms 输出走独立管线,不包含注入的图表(对 LLM 消费者通常更干净);
-- 生产构建失败(校验不过、CLI 缺失)会终止构建;dev 模式在存在旧交付产物时回退并警告。
+## Known behaviors
 
-## 开发
+- After editing a JSON spec in dev mode, touch the corresponding Markdown file to trigger recompilation (production builds are unaffected).
+- Production builds fail hard on validation errors or a missing CLI; dev mode falls back to previously delivered artifacts with a warning.
+
+## Contributing
+
+Contributions are welcome! Feel free to open an issue for bug reports, feature requests, or questions. If you'd like to submit a pull request:
 
 ```bash
+git clone https://github.com/noobHuKai/rspress-plugin-archify.git
+cd rspress-plugin-archify
 pnpm install
-pnpm build   # tsc → dist + 复制 lazy.css
+pnpm build   # tsc → dist + copy lazy.css
 ```
 
-目录结构:`src/index.ts` 插件工厂、`src/remark.ts` 容器解析与占位符注入、`src/render.ts` CLI 编排/缓存/交付后处理、`src/extract.ts` SVG 提取器、`src/wrapper.ts` 工具组包装、`src/bridge.ts` 运行时桥接、`src/lazy.css` 占位符样式。
+Source layout: `src/index.ts` (plugin factory), `src/remark.ts` (container parsing and placeholder injection), `src/render.ts` (CLI orchestration, caching, delivery post-processing), `src/extract.ts` (SVG extractor), `src/wrapper.ts` (toolbar wrapper), `src/bridge.ts` (runtime bridge), `src/lazy.css` (placeholder styles).
 
-本插件已在 [InsightOS Package Manager 文档站](https://git.insightos.cn/kernel/package-manager/ipm)生产使用。
+## Acknowledgments
+
+- [archify](https://github.com/tt-a1i/archify) — the diagram engine behind this plugin
+- [Rspress](https://rspress.rs) — the documentation framework it plugs into
 
 ## License
 
-MIT
+[MIT](./LICENSE)

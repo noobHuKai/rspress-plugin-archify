@@ -3,11 +3,20 @@
   "version": "0.1.0",
   "description": "Rspress plugin for archify diagrams: build-time validate → deliver → lazy-embed interactive architecture/workflow/sequence/dataflow/lifecycle charts",
   "type": "commonjs",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/noobHuKai/rspress-plugin-archify.git"
+  },
+  "homepage": "https://github.com/noobHuKai/rspress-plugin-archify#readme",
+  "bugs": {
+    "url": "https://github.com/noobHuKai/rspress-plugin-archify/issues"
+  },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "files": [
     "dist",
     "README.md",
+    "README.zh-CN.md",
     "LICENSE"
   ],
   "scripts": {
